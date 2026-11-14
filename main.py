@@ -1,46 +1,64 @@
-"""make.fun food-picture-01, round 2.
+"""Decode entry.png.b64 and write the round-3 entry image to $OUTPUT_DIR/entry.png.
 
-Emits the round-2 tonkotsu ramen image (1024x1024 JPEG): decodes the
-base64 payload stored next to this script and writes the raw bytes to
-<OUTPUT_DIR>/entry.png. Standard library only; no network access.
+Reads entry.png.b64, which lives next to this script and holds a base64
+encoding of a 1024x1024 JPEG, and writes the decoded bytes unchanged.
+
+$OUTPUT_DIR defaults to /output. The directory must already exist (for
+example as a mounted volume): this script never creates directories, and
+fails with exit code 1 if the directory is missing. On success it prints
+the number of bytes written and exits 0; a write error or size
+mismatch also exits 1, with an error message on stderr.
 """
 
 import base64
+import binascii
 import os
 import sys
 
-SOURCE_NAME = "entry.png.b64"
-OUTPUT_NAME = "entry.png"
-OUTPUT_DIR_ENV = "OUTPUT_DIR"
+B64_NAME = "entry.png.b64"
+OUT_NAME = "entry.png"
 DEFAULT_OUTPUT_DIR = "/output"
 
 
+def fail(message):
+    print("error: " + message, file=sys.stderr)
+    sys.exit(1)
+
+
 def main():
-    here = os.path.dirname(os.path.abspath(__file__))
-    source_path = os.path.join(here, SOURCE_NAME)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    b64_path = os.path.join(script_dir, B64_NAME)
 
-    with open(source_path, "rb") as fh:
-        encoded = fh.read()
+    out_dir = os.environ.get("OUTPUT_DIR") or DEFAULT_OUTPUT_DIR
+    if not os.path.isdir(out_dir):
+        fail("output directory does not exist: " + out_dir)
+    out_path = os.path.join(out_dir, OUT_NAME)
 
-    data = base64.b64decode(encoded)
+    try:
+        with open(b64_path, "rb") as fh:
+            encoded = fh.read()
+    except OSError as exc:
+        fail("cannot read " + b64_path + ": " + str(exc))
 
-    # OUTPUT_DIR must already exist and be writable: this script never
-    # creates directories, so a missing dir fails fast with FileNotFoundError.
-    out_dir = os.environ.get(OUTPUT_DIR_ENV, DEFAULT_OUTPUT_DIR)
-    out_path = os.path.join(out_dir, OUTPUT_NAME)
+    try:
+        data = base64.b64decode(b"".join(encoded.split()), validate=True)
+    except (binascii.Error, ValueError) as exc:
+        fail("invalid base64 in " + b64_path + ": " + str(exc))
 
-    with open(out_path, "wb") as fh:
-        fh.write(data)
+    try:
+        with open(out_path, "wb") as fh:
+            written = fh.write(data)
+    except OSError as exc:
+        fail("cannot write " + out_path + ": " + str(exc))
 
-    written = os.path.getsize(out_path)
     print(written)
 
-    if written != len(data):
-        print(
-            "size mismatch: wrote %d bytes, expected %d" % (written, len(data)),
-            file=sys.stderr,
+    actual = os.path.getsize(out_path)
+    if written != len(data) or actual != len(data):
+        fail(
+            "size mismatch: decoded %d bytes, wrote %d bytes, file is %d bytes"
+            % (len(data), written, actual)
         )
-        return 1
     return 0
 
 
