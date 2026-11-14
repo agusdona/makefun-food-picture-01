@@ -1,38 +1,48 @@
-"""food-picture-01 (round 2) entry: tonkotsu ramen image.
+"""make.fun food-picture-01, round 2.
 
-Decodes the base64 JPEG embedded in entry.png.b64 (located next to this
-script) and writes it to $OUTPUT_DIR/entry.png (default /output).
-
-Output: a 1024x1024 JPEG, deterministic and byte-identical on every run.
-Pure stdlib, no network access; creates no directories (OUTPUT_DIR must
-already exist), and never writes inside the repo, so it runs from a
-read-only checkout.
+Emits the round-2 tonkotsu ramen image (1024x1024 JPEG): decodes the
+base64 payload stored next to this script and writes the raw bytes to
+<OUTPUT_DIR>/entry.png. Standard library only; no network access.
 """
+
 import base64
 import os
+import sys
+
+SOURCE_NAME = "entry.png.b64"
+OUTPUT_NAME = "entry.png"
+OUTPUT_DIR_ENV = "OUTPUT_DIR"
+DEFAULT_OUTPUT_DIR = "/output"
+
 
 def main():
-    # Locate entry.png.b64 next to the script
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    b64_path = os.path.join(script_dir, 'entry.png.b64')
+    here = os.path.dirname(os.path.abspath(__file__))
+    source_path = os.path.join(here, SOURCE_NAME)
 
-    # Determine output path
-    output_dir = os.environ.get('OUTPUT_DIR', '/output')
-    output_path = os.path.join(output_dir, 'entry.png')
+    with open(source_path, "rb") as fh:
+        encoded = fh.read()
 
-    with open(b64_path, 'r') as f:
-        b64_data = f.read().strip()
+    data = base64.b64decode(encoded)
 
-    image_bytes = base64.b64decode(b64_data)
+    # OUTPUT_DIR must already exist and be writable: this script never
+    # creates directories, so a missing dir fails fast with FileNotFoundError.
+    out_dir = os.environ.get(OUTPUT_DIR_ENV, DEFAULT_OUTPUT_DIR)
+    out_path = os.path.join(out_dir, OUTPUT_NAME)
 
-    with open(output_path, 'wb') as f:
-        f.write(image_bytes)
+    with open(out_path, "wb") as fh:
+        fh.write(data)
 
-    # Sanity check: report the bytes actually written to disk
-    written = os.path.getsize(output_path)
-    print(f'wrote {written} bytes to {output_path}')
-    if written != len(image_bytes):
-        raise SystemExit(f'size mismatch: expected {len(image_bytes)}, got {written}')
+    written = os.path.getsize(out_path)
+    print(written)
 
-if __name__ == '__main__':
-    main()
+    if written != len(data):
+        print(
+            "size mismatch: wrote %d bytes, expected %d" % (written, len(data)),
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
